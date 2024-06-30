@@ -123,7 +123,7 @@ function Find-MatchingContacts {
         #Write-Host "Checking Contact. Variables are: name - $name --- firstname --> $firstName lastname --> $lastName"
         
         if ($match_condition -eq "fullname"){
-            if ($name -ne $null) {
+            if (-not $name) {
                 $nameLower = $name.ToLower()
             }
             else {
@@ -135,7 +135,7 @@ function Find-MatchingContacts {
 
         }
         elseif ($match_condition -eq "lastname") {
-            if ($lastName -ne $null) {
+            if (-not $lastName) {
                 $nameLower = $lastName.ToLower()
             }
             else {
@@ -146,7 +146,7 @@ function Find-MatchingContacts {
         }
         else {
             
-            if ($firstName -ne $null) { 
+            if (-not $firstName) { 
                 $nameLower = $firstName.ToLower()
             }
             else {
@@ -157,7 +157,7 @@ function Find-MatchingContacts {
             
         }
             
-        if ($username -ne $null) {  # Check if $LoggedUser is not null
+        if (-not $username) {  # Check if $LoggedUser is not null
             $username = $username.ToLower()            
             #Write-host "Username variable assigned is: $username" 
         }
