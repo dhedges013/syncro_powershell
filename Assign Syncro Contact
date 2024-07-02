@@ -207,7 +207,7 @@ $matchedContacts = Find-MatchingContacts -LoggedUser $username -AllContacts $all
 $numberFound = $matchedContacts.count
 Write-Host "$numberFound matches found"
 #Function that assigned an Contact to an Asset
-function Assign-ContactToAsset {
+function set-ContactToAsset {
 
     param (
         [string]$AssetId,        
@@ -247,8 +247,8 @@ if ($numberFound -eq 1) {
     $parts = $matchedContacts.Split(" ")
     $contactId = $parts[-1] # since the Find-MatchingContacts function returns the variable in a format of "first last ID" the [-1] removes all but the ID
     
-    write-host "These are the variable passing to Assign-ContactToAsset Funciton: AssetId $assetId ContactId $contactId"
-    Assign-ContactToAsset -AssetId $assetId -ContactId $contactId 
+    write-host "These are the variable passing to set-ContactToAsset Funciton: AssetId $assetId ContactId $contactId"
+    set-ContactToAsset -AssetId $assetId -ContactId $contactId 
     Log-Activity -Message "Successful Contact Matched for $loggedUser - $matchedContacts " -EventName "Contact Matched"
    
 }
