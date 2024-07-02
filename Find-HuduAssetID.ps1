@@ -1,18 +1,15 @@
 Import-Module $env:SyncroModule
 <#
 
-This powershell scripts builds an array of all the assets for a particular company from your Hudu Accoutn . The script assumes you already know what the CompanyID is in Hudu.
+This powershell scripts builds an array of all the assets for a particular company from your Hudu Account . The script assumes you already know what the CompanyID is in Hudu.
 Ideally this would already be stored in a Syncro Custom Field, could be Customer or Asset Custom Field.
 
-
 Password Variable Example:
-
 $apiKey = "Z53SUNMLuNFphGAh" #this is Hudu's API Key
 
 Platform Variable:
 $subdomain = "hedgesmsp" this would be your Hudu subdomain
 $companyId = "6" this is the Hudu Company
-
 
 #>
 
