@@ -112,7 +112,7 @@ def get_syncro_companies(syncro_domain, syncro_api_key):
 
     return customers_dict
 
-
+'''
 # Retrieve companies from both Freshdesk and Syncro
 syncro_companies = get_syncro_companies(syncro_domain, syncro_api_key)
 fd_companies = get_fd_companies(fd_domain, fd_api_key)
@@ -139,7 +139,7 @@ pprint(combined_companies)
 #pprint(unmatched_fd_companies)
 #logging.info("Unmatched Syncro Companies")
 #pprint(unmatched_syncro_companies)
-
+'''
 
 
 """
@@ -191,9 +191,7 @@ def get_fd_tickets_per_company_id(fd_domain, fd_api_key, company_id):
 
     return tickets
 
-company_id = "153001209190"
-fd_tickets = get_fd_tickets_per_company_id(fd_domain, fd_api_key, company_id)
-#pprint(fd_tickets) # This returns a list object with the individual entries each ticket's data
+
 
 
 def get_syncro_ticket_links(syncro_customer_id):
@@ -207,47 +205,33 @@ def get_syncro_ticket_links(syncro_customer_id):
     
     if response.status_code == 200:
         data = response.json()
+        
         ticket_links = data.get('customer', {}).get('ticket_links', [])
         return ticket_links
     else:
         print(f"Error: Unable to fetch data (Status code: {response.status_code})")
         return None
 
-# Example usage
-syncro_customer_id = "30510882"
-syncro_ticket_links = get_syncro_ticket_links(syncro_customer_id)
-#pprint(ticket_links)
-
-'''
-each ticket in fd
-
-foreach ticket in fd_tickets():
-    ticket_subject = ticket['subject']
-    initial_issue = ticket['description_text']
-    created_date = ticket['created_at']
-    priority = ticket['priority']
-    fd_ticket_id = ticket['id']
-    ticket_subject = str(ticket_subject) + " " + str(fd_ticket_id)
-
-    check for matching syncro ticket in ticket_link dictionary items that are in the list, see if you can find matching ticket_subject to ticket_link subject
-
-'''
-
-
 def find_matching_and_unmatched_tickets(syncro_ticket_links, fd_tickets):
+
+    # Print number of matched and unmatched tickets
+    print(f"Number of syncro Tickets: {len(syncro_ticket_links)}")
+    print(f"Number of fd Tickets: {len(fd_tickets)}")
+
     matching_tickets = []
     unmatched_tickets = []
 
     for ticket in fd_tickets:
+        
         ticket_subject = ticket['subject']
         fd_ticket_id = ticket['id']
-        ticket_subject_with_id = f"{ticket_subject} {fd_ticket_id}"
+        ticket_subject = f"{ticket_subject} {fd_ticket_id}"
 
         match_found = False
 
         for syncro_ticket in syncro_ticket_links:
             syncro_subject = syncro_ticket['subject']
-            if ticket_subject_with_id == syncro_subject:
+            if ticket_subject == syncro_subject:
                 matching_tickets.append({
                     "fd_ticket_id": fd_ticket_id,
                     "fd_subject": ticket_subject,
@@ -259,6 +243,7 @@ def find_matching_and_unmatched_tickets(syncro_ticket_links, fd_tickets):
 
         if not match_found:
             unmatched_tickets.append({
+                
                 "fd_ticket_id": fd_ticket_id,
                 "ticket_subject": ticket_subject,
                 "initial_issue": ticket['description_text'],
@@ -268,9 +253,86 @@ def find_matching_and_unmatched_tickets(syncro_ticket_links, fd_tickets):
 
     return matching_tickets, unmatched_tickets
 
-if fd_tickets and syncro_ticket_links:
+def get_priority_value(priority):
+    #print(f'Priority passed in variable is {priority}')
+    priority_map = {
+        0: "0 Urgent",
+        1: "1 High",
+        2: "2 Normal",
+        3: "3 Low"
+    }
+
+    # Return the corresponding priority string
+    return priority_map.get(priority, "Invalid Priority")
+
+def create_syncro_ticket(fd_ticket_id,customer_id, ticket_subject, priority, initial_issue, created_date):
+    """
+    Creates a ticket in Syncro for the given customer ID with provided details.
+
+    Args:
+        customer_id (str): The customer ID in Syncro.
+        ticket_subject (str): The subject of the ticket.
+        priority (int): The priority level of the ticket.
+        initial_issue (str): The initial issue description.
+        created_date (str): The date the ticket was created.
+
+    Returns:
+        bool: True if the ticket was created successfully, False otherwise.
+    """
+    syncro_priority = str(get_priority_value(priority))
+    ticket_url = f"https://{syncro_domain}.syncromsp.com/api/v1/tickets"
+    headers = {
+        "accept": "application/json",
+        "Authorization": syncro_api_key
+    }
+
+    ticket_data = {
+        "number": fd_ticket_id,
+        "customer_id": customer_id,
+        "subject": ticket_subject,
+        "created_at": created_date,
+        "status": "Resolved",
+        "priority": syncro_priority,
+        "comments_attributes": [
+            {
+                "subject": "API Import Notes",
+                "created_at": created_date,
+                "body": initial_issue,
+                "hidden": True,
+                "do_not_email": True
+            }
+        ]
+    }
+
+    try:
+        response = requests.post(ticket_url, headers=headers, json=ticket_data)
+        response.raise_for_status()
+        print("Syncro Ticket created successfully!")
+        return True
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to create Syncro ticket: {e}")
+        return False
+
+company_id = "153001209190"
+fd_tickets = get_fd_tickets_per_company_id(fd_domain, fd_api_key, company_id)
+
+syncro_customer_id = "30510882"
+syncro_ticket_links = get_syncro_ticket_links(syncro_customer_id)
+
+if fd_tickets:
     matching_tickets, unmatched_tickets = find_matching_and_unmatched_tickets(syncro_ticket_links, fd_tickets)
-    print("Matching Tickets:")
-    pprint(matching_tickets)
-    print("\nUnmatched Tickets:")
-    pprint(unmatched_tickets)
+    # Print number of matched and unmatched tickets
+    print(f"Number of Matched Tickets: {len(matching_tickets)}")
+    print(f"Number of Unmatched Tickets: {len(unmatched_tickets)}")
+    
+    # Create Syncro tickets for unmatched Freshdesk tickets
+    for ticket in unmatched_tickets:
+        customer_id = syncro_customer_id  # Use a specific Syncro customer ID
+        fd_ticket_id = ticket['fd_ticket_id']
+        ticket_subject = ticket['ticket_subject']
+        priority = ticket['priority']
+        initial_issue = ticket['initial_issue']
+        created_date = ticket['created_date']
+
+        # Create Syncro ticket
+        create_syncro_ticket(fd_ticket_id,customer_id, ticket_subject, priority, initial_issue, created_date)
