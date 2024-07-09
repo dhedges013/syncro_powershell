@@ -314,37 +314,7 @@ def find_duplicate_and_new_tickets(syncro_ticket_links, fd_tickets):
     The Lists are from GET API calls against the company IDs
 
     The Ticket Number in Freshdesk will be used to look for duplicates either in the Syncro Ticket Number or in the Subject
-    
-    the Syncro Ticket Data List looks like:
-    
-    "ticket_links": [
-      {
-        "id": 83450356,
-        "number": 50,
-        "status": "Resolved",
-        "subject": "service Issue 50"
-      },
-
-    The Freshdesk Ticket Data List (example doesnt show all field) looks like:
-    [
-        {'associated_tickets_count': None,
-        'company_id': 153001209190,
-        'created_at': '2024-07-03T13:28:11Z',
-        'description': '<div style="font-family:-apple-system, BlinkMacSystemFont, '
-                        'Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif; '
-                        'font-size:14px"><div dir="ltr">Printer is an HP Printer 401m '
-                        'and it has stop working</div></div>',
-        'description_text': 'Printer is an HP Printer 401m and it has stop working',
-        'due_by': '2024-07-05T13:28:11Z',
-        'priority': 2,
-        'source': 3,
-        'spam': False,
-        'status': 2,
-        'subject': 'Printer Jam',
-        'type': 'Incident',
-        'updated_at': '2024-07-05T16:12:30Z'}
-    ]     
-    
+    Example of data format at the bottom:    
     '''
     # Print number of matched and unmatched tickets
     logging.info("Starting Ticket Comparsion and Matching")
@@ -355,40 +325,31 @@ def find_duplicate_and_new_tickets(syncro_ticket_links, fd_tickets):
     new_tickets = []
 
     for ticket in fd_tickets:
-        
+        logging.info(f"---------------Next Freshdesk Ticket--------------")
         ticket_subject = ticket['subject']
         fd_ticket_id = ticket['id']
         ticket_subject = f"{ticket_subject} {fd_ticket_id}"
 
-        match_found = False
-
-        for syncro_ticket in syncro_ticket_links:
-            syncro_subject = syncro_ticket['subject']
-            if ticket_subject in syncro_subject:
-                duplicated_tickets.append({
-                    "fd_ticket_id": fd_ticket_id,
-                    "fd_subject": ticket_subject,
-                    "syncro_ticket_id": syncro_ticket['id'],
-                    "syncro_subject": syncro_ticket['subject']
-                })
-                match_found = True
-                logging.info(f"Match found for Freshdesk ticket {fd_ticket_id} with Syncro ticket {syncro_ticket['id']}")
-
-                break
-
-            if ticket_subject not in syncro_subject:
-                new_tickets.append({
-                    
-                    "fd_ticket_id": fd_ticket_id,
-                    "ticket_subject": ticket_subject,
-                    "initial_issue": ticket['description_text'],
-                    "created_date": ticket['created_at'],
-                    "priority": ticket['priority']
-                })
-                logging.info(f"No match found for Freshdesk ticket {fd_ticket_id}")
-                break
-            else:
-                logging.info(f"Error on  {fd_ticket_id} did not match in or not in check")
+        syncro_subjects = [ticket['subject'] for ticket in syncro_ticket_links]
+        if ticket_subject in syncro_subjects:
+            logging.info(f"Match found for Freshdesk ticket {fd_ticket_id} - {ticket_subject}")
+            duplicated_tickets.append({
+                "fd_ticket_id": fd_ticket_id,
+                "fd_subject": ticket_subject,                
+                "syncro_subject": ticket_subject
+            })
+            logging.info(f"Match found for Freshdesk ticket {fd_ticket_id}")
+            
+        else:            
+            new_tickets.append({                  
+                "fd_ticket_id": fd_ticket_id,
+                "ticket_subject": ticket_subject,
+                "initial_issue": ticket['description_text'],
+                "created_date": ticket['created_at'],
+                "priority": ticket['priority']
+            })
+            logging.info(f"No match found for Freshdesk ticket {fd_ticket_id} - {ticket_subject}")
+                   
 
 
     logging.info("Ticket comparison and matching completed.")
@@ -531,3 +492,40 @@ def main_old():
 
 if __name__ == "__main__":
     main()
+
+
+
+'''
+the Syncro Ticket Data List looks like:
+    
+    "ticket_links": [
+      {
+        "id": 83450356,
+        "number": 50,
+        "status": "Resolved",
+        "subject": "service Issue 50"
+      },
+
+    The Freshdesk Ticket Data List (example doesnt show all field) looks like:
+    [
+        {'associated_tickets_count': None,
+        'company_id': 153001209190,
+        'created_at': '2024-07-03T13:28:11Z',
+        'description': '<div style="font-family:-apple-system, BlinkMacSystemFont, '
+                        'Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif; '
+                        'font-size:14px"><div dir="ltr">Printer is an HP Printer 401m '
+                        'and it has stop working</div></div>',
+        'description_text': 'Printer is an HP Printer 401m and it has stop working',
+        'due_by': '2024-07-05T13:28:11Z',
+        'priority': 2,
+        'source': 3,
+        'spam': False,
+        'status': 2,
+        'subject': 'Printer Jam',
+        'type': 'Incident',
+        'updated_at': '2024-07-05T16:12:30Z'}
+    ]     
+    
+'''
+
+
