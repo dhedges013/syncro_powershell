@@ -3,7 +3,7 @@ from requests.auth import HTTPBasicAuth
 import pprint
 from pprint import pprint
 import json
-
+import time
 import logging
 import os
 from datetime import datetime
@@ -37,6 +37,8 @@ print(f"Log File Path: {log_dir} ")
 ###################################################################################################
 # API Variables
 ###################################################################################################
+API_CALL_SLEEP = 0.75
+
 syncro_domain = 'hedgesmsp'
 syncro_api_key = "Tab3d28f3d8b9f53f4-889ad9baeaeba0084af02dc1a1bf6989"
 
@@ -84,6 +86,7 @@ def get_fd_companies(fd_domain, fd_api_key):
         try:
             logging.info(f"Requesting URL: {url}")
             response = requests.get(url, headers=headers, auth=HTTPBasicAuth(fd_api_key, 'X'))
+            time.sleep(API_CALL_SLEEP)
             response.raise_for_status()
 
             companies = response.json()
@@ -149,6 +152,7 @@ def get_syncro_companies(syncro_domain, syncro_api_key):
         try:
             logging.info(f"Requesting customers page {page} from Syncro. Total retrieved so far: {total_companies_retrieved}.")
             response = requests.get(url, headers=headers, params={"page": page})
+            time.sleep(API_CALL_SLEEP)
             response.raise_for_status()
             data = response.json()
 
@@ -225,8 +229,9 @@ def match_companies():
 ####### Section 1b
 #  Functions to gather Freshdesk comments and create syncro comments
 #   
-#   
-#   
+#   The create_syncro_comment function is a helper for get_ticket_comments function
+#   get_ticket_comments is only called if a new ticket is found missing in Syncro
+#   Meaning the new ticket and comment is created at the same time
 
 ####################################################################################################
 
@@ -253,6 +258,7 @@ def create_syncro_comment(syncro_ticket_id, body, private_public, created, inbou
     
     try:
         response = requests.post(url, headers=headers, json=data)
+        time.sleep(API_CALL_SLEEP)
         response.raise_for_status()
         
         if response.status_code == 200:
@@ -275,7 +281,7 @@ def get_ticket_comments(syncro_ticket_id, ticket_id):
     try:
         while True:
             response = requests.get(url, headers=headers, auth=auth, params={'page': page})
-            
+            time.sleep(API_CALL_SLEEP)
             if response.status_code == 200:
                 ticket_data = response.json()
                 
@@ -326,7 +332,6 @@ Next the goal is to loop through the combined_companies dictionary, which is for
 }
 
 
-
 for each key, It will build Ticket List for FD and a Ticket List for Syncro
 from that list, it remove duplicates based on Subject Line + FD Ticket ID
 create a new ticket in syncro for what is left in the list.
@@ -366,6 +371,7 @@ def get_fd_tickets_per_company_id(fd_company_id):
     while url:
         try:
             response = requests.get(url, headers=headers, auth=HTTPBasicAuth(fd_api_key, 'X'))
+            time.sleep(API_CALL_SLEEP)
             response.raise_for_status()
 
             page_tickets = response.json()
@@ -392,6 +398,7 @@ def get_syncro_ticket_links_per_company_id(syncro_customer_id):
     }
 
     response = requests.get(url, headers=headers)
+    time.sleep(API_CALL_SLEEP)
     
     if response.status_code == 200:
         data = response.json()
@@ -513,6 +520,7 @@ def create_syncro_ticket(fd_ticket_id,customer_id, ticket_subject, priority, ini
     try:
         logging.info(f"Attempting to create Syncro ticket for Freshdesk ticket ID: {fd_ticket_id}")
         response = requests.post(ticket_url, headers=headers, json=ticket_data)
+        time.sleep(API_CALL_SLEEP)
         response.raise_for_status()        
         logging.info(f"Syncro ticket created successfully for Freshdesk ticket ID: {fd_ticket_id}")
         response_data = response.json()
@@ -524,7 +532,6 @@ def create_syncro_ticket(fd_ticket_id,customer_id, ticket_subject, priority, ini
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to create Syncro ticket for Freshdesk ticket ID {fd_ticket_id}: {e}")
         return False
-
 
 
 # Freshdesk company ID and Syncro Company ID is passed in from the combined_companies dictionary created from the match_companies Function
@@ -567,40 +574,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-'''
-the Syncro Ticket Data List looks like:
-    
-    "ticket_links": [
-      {
-        "id": 83450356,
-        "number": 50,
-        "status": "Resolved",
-        "subject": "service Issue 50"
-      },
-
-    The Freshdesk Ticket Data List (example doesnt show all field) looks like:
-    [
-        {'associated_tickets_count': None,
-        'company_id': 153001209190,
-        'created_at': '2024-07-03T13:28:11Z',
-        'description': '<div style="font-family:-apple-system, BlinkMacSystemFont, '
-                        'Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif; '
-                        'font-size:14px"><div dir="ltr">Printer is an HP Printer 401m '
-                        'and it has stop working</div></div>',
-        'description_text': 'Printer is an HP Printer 401m and it has stop working',
-        'due_by': '2024-07-05T13:28:11Z',
-        'priority': 2,
-        'source': 3,
-        'spam': False,
-        'status': 2,
-        'subject': 'Printer Jam',
-        'type': 'Incident',
-        'updated_at': '2024-07-05T16:12:30Z'}
-    ]     
-    
-'''
-
-
