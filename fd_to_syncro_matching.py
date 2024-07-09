@@ -13,15 +13,17 @@ from datetime import datetime
 #### Logging Configuration and API
 ####################################################################################################
 
-log_dir = r'c:\temp\logs'
+base_log_dir = r'c:\temp\logs'
 
+# Create a unique directory for each run based on the current timestamp
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+log_dir = os.path.join(base_log_dir, f'run_{timestamp}')
 
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
 # Create the log file name with the current date
 log_filename = os.path.join(log_dir, f'freshdesk_import_{datetime.now().strftime("%Y-%m-%d")}.txt')
-
 
 # Configure logging
 logging.basicConfig(
@@ -30,8 +32,8 @@ logging.basicConfig(
     filename=log_filename,
     filemode='a'
 )
-
 print(f"Log File Path: {log_dir} ")
+
 syncro_domain = 'hedgesmsp'
 syncro_api_key = "Tab3d28f3d8b9f53f4-889ad9baeaeba0084af02dc1a1bf6989"
 
@@ -50,6 +52,7 @@ fd_api_key = 'yxHUamXLkqwZUwcL1Wlg'
 #   match_companies -----> Returns 3 lists: combined_companies, unmatched_fd_companies, unmatched_syncro_companies
 #
 #   End Result of Section 1 is you have 3 lists of combined and unmatched_fd and unmatched_syncro companies
+#   There will be log files of matched and unmatched companies
 ####################################################################################################
 
 def get_fd_companies(fd_domain, fd_api_key):
@@ -100,9 +103,6 @@ def get_fd_companies(fd_domain, fd_api_key):
     logging.info(f"Total companies retrieved: {total_companies_retrieved}")
     return company_dict
 
-
-
-
 def find_next_link(links):
     """
     Helper function to find the next page URL from the 'Link' header in the response.
@@ -119,7 +119,6 @@ def find_next_link(links):
         if 'rel="next"' in section[1]:
             return section[0].strip('<>')
     return None
-
 
 def get_syncro_companies(syncro_domain, syncro_api_key):
     """
@@ -167,7 +166,6 @@ def get_syncro_companies(syncro_domain, syncro_api_key):
     logging.info(f"Successfully retrieved {total_companies_retrieved} companies from Syncro.")
     return customers_dict
 
-
 def match_companies():
     logging.info("Starting company matching process.")
 
@@ -184,7 +182,7 @@ def match_companies():
 
 
     for company_name, fd_id in fd_companies.items():
-        logging.debug(f"Processing Freshdesk company: {company_name}")        
+        #logging.debug(f"Processing Freshdesk company: {company_name}")        
         if company_name in syncro_companies:
             
             syncro_id = syncro_companies[company_name]
@@ -193,7 +191,7 @@ def match_companies():
             unmatched_fd_companies[company_name] = fd_id
 
     for company_name, syncro_id in syncro_companies.items():
-        logging.debug(f"Checking Syncro company: {company_name}")
+        #logging.debug(f"Checking Syncro company: {company_name}")
         if company_name not in combined_companies:
             unmatched_syncro_companies[company_name] = syncro_id
 
@@ -222,17 +220,34 @@ def match_companies():
 
 """
 Section 2
-Next I want to Build Ticket List for FD and a Ticket List for Syncro
-Remove duplicates based on Subject Line + FD Ticket ID
-add what remains
+Next idea would be to loop through the combined_companies dictionary, which is formatted like:
+
+{
+    "John Smith Smithing": [
+        153001209190,
+        30510882
+    ],
+    "Web Networks": [
+        153001209535,
+        32172685
+    ]
+}
+
+
+
+for each key, It will build Ticket List for FD and a Ticket List for Syncro
+from that list, it remove duplicates based on Subject Line + FD Ticket ID
+create a new ticket in syncro for what is left in the list.
 
 Functions:
 
-get_fd_tickets_per_company_id
-get_syncro_ticket_links_per_company_id
-find_duplicate_and_new_tickets
+get_fd_tickets_per_company_id(fd_domain, fd_api_key, company_id)
+def get_syncro_ticket_links_per_company_id(syncro_customer_id)
+find_duplicate_and_new_tickets(syncro_ticket_links, fd_tickets)
 
+get_priority_value(priority) #Function used to format the prioirty field for Syncro Ticket JSON creation
 
+def create_syncro_ticket(fd_ticket_id,customer_id, ticket_subject, priority, initial_issue, created_date) #Create a syncro ticket with a POST call, pass in the related information
 """
 
 def get_fd_tickets_per_company_id(fd_domain, fd_api_key, company_id):
@@ -328,10 +343,7 @@ def find_duplicate_and_new_tickets(syncro_ticket_links, fd_tickets):
         'subject': 'Printer Jam',
         'type': 'Incident',
         'updated_at': '2024-07-05T16:12:30Z'}
-    ]
-    
-    
-    
+    ]     
     
     '''
     # Print number of matched and unmatched tickets
@@ -339,8 +351,8 @@ def find_duplicate_and_new_tickets(syncro_ticket_links, fd_tickets):
     logging.info(f"Total Number of Syncro Tickets: {len(syncro_ticket_links)}")
     logging.info(f"Total Number of Freshdesk Tickets: {len(fd_tickets)}")
 
-    matching_tickets = []
-    unmatched_tickets = []
+    duplicated_tickets = []
+    new_tickets = []
 
     for ticket in fd_tickets:
         
@@ -352,30 +364,43 @@ def find_duplicate_and_new_tickets(syncro_ticket_links, fd_tickets):
 
         for syncro_ticket in syncro_ticket_links:
             syncro_subject = syncro_ticket['subject']
-            if ticket_subject == syncro_subject:
-                matching_tickets.append({
+            if ticket_subject in syncro_subject:
+                duplicated_tickets.append({
                     "fd_ticket_id": fd_ticket_id,
                     "fd_subject": ticket_subject,
                     "syncro_ticket_id": syncro_ticket['id'],
                     "syncro_subject": syncro_ticket['subject']
                 })
-                
+                match_found = True
                 logging.info(f"Match found for Freshdesk ticket {fd_ticket_id} with Syncro ticket {syncro_ticket['id']}")
+
                 break
 
-        if not match_found:
-            unmatched_tickets.append({
-                
-                "fd_ticket_id": fd_ticket_id,
-                "ticket_subject": ticket_subject,
-                "initial_issue": ticket['description_text'],
-                "created_date": ticket['created_at'],
-                "priority": ticket['priority']
-            })
-            logging.info(f"No match found for Freshdesk ticket {fd_ticket_id}")
+            if ticket_subject not in syncro_subject:
+                new_tickets.append({
+                    
+                    "fd_ticket_id": fd_ticket_id,
+                    "ticket_subject": ticket_subject,
+                    "initial_issue": ticket['description_text'],
+                    "created_date": ticket['created_at'],
+                    "priority": ticket['priority']
+                })
+                logging.info(f"No match found for Freshdesk ticket {fd_ticket_id}")
+                break
+            else:
+                logging.info(f"Error on  {fd_ticket_id} did not match in or not in check")
+
 
     logging.info("Ticket comparison and matching completed.")
-    return matching_tickets, unmatched_tickets
+    
+    # Dump matched and unmatched tickets into separate files
+    with open(os.path.join(log_dir, 'matching_tickets.txt'), 'w') as match_file:
+        json.dump(duplicated_tickets, match_file, indent=4)
+
+    with open(os.path.join(log_dir, 'unmatched_tickets.txt'), 'w') as unmatched_file:
+        json.dump(new_tickets, unmatched_file, indent=4)
+
+    return duplicated_tickets, new_tickets
 
 #Function used to format the prioirty field for Syncro Ticket JSON creation
 def get_priority_value(priority):
@@ -439,10 +464,41 @@ def create_syncro_ticket(fd_ticket_id,customer_id, ticket_subject, priority, ini
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to create Syncro ticket for Freshdesk ticket ID {fd_ticket_id}: {e}")
         return False
+    
+def process_company(company_name, fd_id, syncro_id):
+    logging.info(f"Processing company: {company_name}")
+    logging.info(f"Freshdesk ID: {fd_id}, Syncro ID: {syncro_id}")
+    
+    fd_tickets = get_fd_tickets_per_company_id(fd_domain, fd_api_key, fd_id)
+    syncro_ticket_links = get_syncro_ticket_links_per_company_id(syncro_id)
+    
+    if fd_tickets:
+        matching_tickets, unmatched_tickets = find_duplicate_and_new_tickets(syncro_ticket_links, fd_tickets)
+        
+        logging.info(f"Number of Matched Tickets for {company_name}: {len(matching_tickets)}")
+        logging.info(f"Number of Unmatched Tickets for {company_name}: {len(unmatched_tickets)}")
+        
+        for ticket in unmatched_tickets:
+            fd_ticket_id = ticket['fd_ticket_id']
+            ticket_subject = ticket['ticket_subject']
+            priority = ticket['priority']
+            initial_issue = ticket['initial_issue']
+            created_date = ticket['created_date']
 
+            # Create Syncro ticket
+            success = create_syncro_ticket(fd_ticket_id, syncro_id, ticket_subject, priority, initial_issue, created_date)
+            if success:
+                logging.info(f"Syncro ticket created successfully for Freshdesk ticket ID: {fd_ticket_id}")
+            else:
+                logging.warning(f"Failed to create Syncro ticket for Freshdesk ticket ID: {fd_ticket_id}")
 
 def main():
     combined_companies, unmatched_fd_companies, unmatched_syncro_companies = match_companies()
+
+    for company_name, values in combined_companies.items():
+        fd_id, syncro_id = values
+        process_company(company_name, fd_id, syncro_id)
+
     
 def main_old():
     company_id = "153001209190" #Provide the Freshdesk Company ID
