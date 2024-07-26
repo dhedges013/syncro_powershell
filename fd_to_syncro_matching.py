@@ -8,6 +8,18 @@ import logging
 import os
 from datetime import datetime
 
+###################################################################################################
+# API Variables
+###################################################################################################
+API_CALL_SLEEP = 0.75
+
+syncro_domain = 'syncro-subdomain'
+syncro_api_key = "syncro-apikey"
+
+fd_domain = 'freshdeskdomain'
+fd_api_key = 'freshdesk apikey'
+
+
 ####################################################################################################
 # Section 0
 #### Logging Configuration and API
@@ -33,18 +45,6 @@ logging.basicConfig(
     filemode='a'
 )
 print(f"Log File Path: {log_dir} ")
-
-###################################################################################################
-# API Variables
-###################################################################################################
-API_CALL_SLEEP = 0.75
-
-syncro_domain = 'hedgesmsp'
-syncro_api_key = "Tab3d28f3d8b9f53f4-889ad9baeaeba0084af02dc1a1bf6989"
-
-fd_domain = 'hedgesmsp'
-fd_api_key = 'yxHUamXLkqwZUwcL1Wlg'
-
 
 ####################################################################################################
 ####### Section 1a
@@ -315,37 +315,36 @@ def get_ticket_comments(syncro_ticket_id, ticket_id):
         return None
 
 
+####################################################################################################
+######## Section 2
+# Next the goal is to loop through the combined_companies dictionary, which is formatted like:
+#
+# {
+#     "John Smith Smithing": [
+#         153001209190,
+#         30510882
+#     ],
+#     "Web Networks": [
+#         153001209535,
+#         32172685
+#     ]
+# }
+#
+# for each key, It will build Ticket List for FD and a Ticket List for Syncro
+# from that list, it remove duplicates based on Subject Line + FD Ticket ID
+# create a new ticket in syncro for what is left in the list.
+#
+# Functions:
+#
+# get_fd_tickets_per_company_id(fd_domain, fd_api_key, company_id)
+# def get_syncro_ticket_links_per_company_id(syncro_customer_id)
+# find_duplicate_and_new_tickets(syncro_ticket_links, fd_tickets)
+#
+# get_priority_value(priority) #Function used to format the prioirty field for Syncro Ticket JSON creation
+#
+# def create_syncro_ticket(fd_ticket_id,customer_id, ticket_subject, priority, initial_issue, created_date) #Create a syncro ticket with a POST call, pass in the related information
+####################################################################################################
 
-"""
-Section 2
-Next the goal is to loop through the combined_companies dictionary, which is formatted like:
-
-{
-    "John Smith Smithing": [
-        153001209190,
-        30510882
-    ],
-    "Web Networks": [
-        153001209535,
-        32172685
-    ]
-}
-
-
-for each key, It will build Ticket List for FD and a Ticket List for Syncro
-from that list, it remove duplicates based on Subject Line + FD Ticket ID
-create a new ticket in syncro for what is left in the list.
-
-Functions:
-
-get_fd_tickets_per_company_id(fd_domain, fd_api_key, company_id)
-def get_syncro_ticket_links_per_company_id(syncro_customer_id)
-find_duplicate_and_new_tickets(syncro_ticket_links, fd_tickets)
-
-get_priority_value(priority) #Function used to format the prioirty field for Syncro Ticket JSON creation
-
-def create_syncro_ticket(fd_ticket_id,customer_id, ticket_subject, priority, initial_issue, created_date) #Create a syncro ticket with a POST call, pass in the related information
-"""
 
 # builds a list of freshdesk tickets per company id, since 2019
 def get_fd_tickets_per_company_id(fd_company_id):
@@ -391,10 +390,10 @@ def get_fd_tickets_per_company_id(fd_company_id):
 
 # Function Builds a list of syncro tickets ids and subjects per company id
 def get_syncro_ticket_links_per_company_id(syncro_customer_id):
-    url = f"https://hedgesmsp.syncromsp.com/api/v1/customers/{syncro_customer_id}"
+    url = f"https://{syncro_domain}.syncromsp.com/api/v1/customers/{syncro_customer_id}"
     headers = {
         "accept": "application/json",
-        "Authorization": "Tab3d28f3d8b9f53f4-889ad9baeaeba0084af02dc1a1bf6989"
+        "Authorization": syncro_api_key
     }
 
     response = requests.get(url, headers=headers)
@@ -409,6 +408,7 @@ def get_syncro_ticket_links_per_company_id(syncro_customer_id):
         print(f"Error: Unable to fetch data (Status code: {response.status_code})")
         return None
 
+#Compares the Ticket List for Freshdesk and Syncro using the Ticket Number and Subject Line
 def find_duplicate_and_new_tickets(company_name,syncro_ticket_links, fd_tickets):
     '''
     List of dictionaries that hold individual Ticket Data is passed into this function
@@ -532,7 +532,6 @@ def create_syncro_ticket(fd_ticket_id,customer_id, ticket_subject, priority, ini
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to create Syncro ticket for Freshdesk ticket ID {fd_ticket_id}: {e}")
         return False
-
 
 # Freshdesk company ID and Syncro Company ID is passed in from the combined_companies dictionary created from the match_companies Function
 def process_company_tickets(company_name, fd_id, syncro_id):
