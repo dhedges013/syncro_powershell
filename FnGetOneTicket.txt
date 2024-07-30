@@ -1,0 +1,23 @@
+= (ticketid) =>
+let
+    // Your existing code
+    Source = Json.Document(
+        Web.Contents(
+            "https://subdomain.syncromsp.com/api/v1/tickets/" & Number.ToText(ticketid),
+            [Headers=[Authorization="T60da81f9d14c9eace-4c707958ea04110bb75bb12de4426bbf"]]
+        )
+    ),
+
+    // Function to add a pause
+    AddPause = (item) => 
+        let
+            // Change the delay duration to 1 second
+            delayDurationInSeconds = .5, // 1 second pause
+            delayedResult = Function.InvokeAfter(()=> item, #duration(0,0,0,delayDurationInSeconds))
+        in
+            delayedResult,
+
+    // Apply the pause to the source
+    DelayedSource = AddPause(Source)
+in
+    DelayedSource

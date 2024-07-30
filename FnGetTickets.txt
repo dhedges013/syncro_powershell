@@ -1,0 +1,10 @@
+= (Pages) =>
+let
+    Source = Json.Document(
+        Web.Contents(
+            "https://subdomain.syncromsp.com/api/v1/tickets?ticket_search_id=131218&" & Number.ToText(Pages),
+            [Headers=[Authorization="T60da81f9d14c9eace-4c707958ea04110bb75bb12de4426bbf"]]
+        )
+    )
+in
+    Source
