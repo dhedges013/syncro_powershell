@@ -1,40 +1,61 @@
 <#
+
+script variables:
+
+$alert_if_unmanaged_packages_found = "FALSE"
+$force_add_unmanaged_packages = "FALSE"
+$ignore_version_and_reboot_checks = "FALSE"
+$update_all_packages = "FALSE"
+
 ################# IMPORTANT SCRIPT INFORMATION ################# 
 
-By Default the variables will log the finding to the the asset's activity log. Toggle the coorspending variable to have the script
-take actions or creating a RMM Alert, or to force add the found packages to the choco update list. I added as much information into 
-the RMM Alert, Write-Host Outputs, and Asset Activity Log as I could so it is very clear whats was found.
+By default the dropdown variables set the script to log most of the findings to the the asset's activity log. More details will be in the script output and
+in the RMM Alert Description. Toggle the corresponding variable to have the script create a RMM Alert, force add the found packages to the choco update list, 
+to ignore warnings and/or force all choco packages to update now. I added as much information into the different outputs as I could,
+(RMM Alert, Write-Host Outputs, and Asset Activity Log) and it should be clear what was found.
 
-This script works in seperately from a Syncro 3rd Party Patch Policy. Neither parts interact or would conflict. BUT you need to
-run your own schedule for the update all choco packages. Command Prompt command is:
+This script works separately from a Syncro 3rd Party Patch Policy. Neither parts interact or would cause a conflict. BUT you need to
+run your own schedule for the updating all choco packages. Syncro only updates the specific packages you select in the 3rd Party Patch Policy builder.
+Command Prompt command is:
 
 choco upgrade all -y
 
-You would need to run this commandon a scheduled script or other method, to have the packages found by this script to update.
-This script will add the packages to the list of chocolatey managed packages on the machine, but it does not run the 
-updates on any kind of schedule. Command Prompt command to see your current choco package list:
+Run this cmd via a scheduled script, windows scheduled task, or some other method, to have the packages found
+by this script to update. This script will add the packages to the list of chocolatey managed on the machine,
+and it does attempt to update packages when they get initial added. Behavior could vary by package.
+Command Prompt command to see your current choco managed package list:
 
 choco list
 
-Update the $packages hasttable in the powershell code to add or remove the software's installed display name and the
+################# CUSTOMIZE THE UPDATE IF PRESENT LIST ################# 
+
+Update the $packages hashtable in the powershell code below to add or remove the software's installed display name and the
 corresponding package in chocolatey.
 
-Like all things in the IT world, there is no guarantee all the pAlready Managed Packages ackages listed are the correct and one you actually would want,
-and/or if the Package Name gets changed or  updated to something different in the future. But I tried to keep the list only
-the largest,most commonly know packages and software. Feel free to research and add additional packages as appropriate.
+Like all things in the IT world, there is no guarantee all the already added packages listed are the current, correct and actually
+would want. Other situtions like if the Package name gets changed or updated to something different in the future would need to be reviewed regularly.
+The list was limited to the largest, most commonly know packages and software as of the beginning of 2025. I likely forgot some but feel free to research
+and add/adjust/remove packages as appropriate.
 
 
 ################# Additional Considerations about Chocolatey ################# 
 
-For Many common installers (e.g., Zoom, Chrome) Chocolatey usually detect an existing installation and upgrade it without uninstalling and
-reinstalled but this isn't universal. Some Chocolatey packages might work differently,  behavior can vary by software vendor. 
-It's best to check the choco package's documentation or test on a non-critical system if you're concerned for any issues.
+For many common installers (e.g., Zoom, Chrome) Chocolatey sometimes detect an existing installation and upgrade using the existing instance,
+without uninstalling and reinstalled but this isn't universal. Some Chocolatey packages might work differently, behavior can vary by software vendor. 
+It's best to check the choco package's documentation or test on a non-critical system if you're concerned of impacting Endusers.
 
 https://community.chocolatey.org/packages
 
 Any software that has a matching Chocolatey package can be added to the choco update list (type in command prompt: "choco list" to
 see your machines current list) but the tricky part is matching up the reported Display Name of installed software with the official
-choco package name. If you are not careful you can easily make mistakes here.
+choco package name. If you are not careful you can easily make mistakes here. Its a simple command to add a new package to the choco list. Example:
+
+choco install googlechrome -y
+
+To force update ALL Packages in the choco list:
+
+choco upgrade all -y
+
 
 #>
 
@@ -135,8 +156,8 @@ if($ignore_version_and_reboot_checks -eq "False"){
     if ($version -ge [version]"2.3") {
         Write-Host "Chocolately version is 2.3 or higher"
     } else {
-        Write-Host "Chocolately version is lower than 2.3, unlikely to work exiting"
-        Log-Activity -Message "Chocolately version is lower than 2.3. Exiting Script" -EventName "Choco Update"
+        Write-Host "Chocolately version: $version is lower than 2.3, unlikely to work exiting"
+        Log-Activity -Message "Chocolately version: $version is lower than 2.3. Exiting Script" -EventName "Choco Update"
         exit 1
     }
 }
@@ -208,9 +229,9 @@ foreach ($pkg in $unmanagedSoftwareList) {
     Write-Host "- $($pkg.DisplayName) (Package: $($pkg.PackageName))"
 }
 Write-Host " "
-Log-Activity -Message "$($chocoManaged.Keys.Count) currently managed Packages by Chocolatey" -EventName "Choco Update"
-Log-Activity -Message " $($managedList.Count) packages are managed from Script's Prebuilt List" -EventName "Choco Update"
-Log-Activity -Message "$($unmanagedSoftwareList.Count) installed Apps (Not Managed by Chocolatey) that could be added" -EventName "Choco Update"
+Log-Activity -Message "Choco list shows $($chocoManaged.Keys.Count) packages managed by Chocolatey" -EventName "Choco Update"
+Log-Activity -Message "$($managedList.Count) apps packages already added from Update If Present list" -EventName "Choco Update"
+Log-Activity -Message "$($unmanagedSoftwareList.Count) installed Apps that could be added to Chocolatey from Update If Present list" -EventName "Choco Update"
 
 $unmanagedListOutput = $unmanagedSoftwareList | ForEach-Object { "- $($_.DisplayName) (Package: $($_.PackageName))" }
 # Build string outputs for each section
@@ -236,8 +257,10 @@ $($managedList.Count) actively managed packages that match with the Script's Pac
 $($unmanagedSoftwareList.Count) not actively managed packages by Chocolatey that Could be Added: $unmanagedListOutput
 "@
 
-if ($alert_if_unmanaged_packages_found -eq "True") {
+if ($unmanagedListOutput -gt 1 -and $alert_if_unmanaged_packages_found -eq "True") {
     Rmm-Alert -Category 'Unmanaged Choco Package' -Body $body
+} else {
+    Write-Host "Unmanaged package count is: $unmanagedListOutput"
 }
 
 if ($force_add_unmanaged_packages -eq "True") {
