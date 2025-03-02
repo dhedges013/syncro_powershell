@@ -1,11 +1,34 @@
+$alert_if_unmanaged_packages_found = "FALSE" 
+$alert_if_unmanaged_packages_found = "FALSE" 
+$force_add_unmanaged_packages = "FALSE"
+$update_all_packages = "FALSE"
+
+
 <#
 
 script variables:
 
-$alert_if_unmanaged_packages_found = "FALSE"
+Defaults are all FALSE which will take the minimal action of just logging the results to the asset's activity log.
+
+$alert_if_unmanaged_packages_found = "FALSE" 
+    - This Variable creates a Syncro RMM Alert if software installed on the machine is the script's list of apps to manage
+    - The RMM Description will have a list of the packages found
+
 $force_add_unmanaged_packages = "FALSE"
+    - This adds the package to the choco management list using the command choco install googlechrome -y;
+    - As far as I can tell this will also trigger an update attempt, for most packages
+
 $ignore_version_and_reboot_checks = "FALSE"
+    - By default you will get an RMM Alert if you have older verions of choco or a pending reboot
+    - This variable will force run the script even with known compatibility issues. 
+    - Additional logic is needed for the script to work when a reboot is pending and for older choco versions.
+    - Sometimes these work, other times it doesnt. Both do not reporting back into Syncro cleanly 
+
 $update_all_packages = "FALSE"
+    - This variable will trigger updates for all packages found in the choco list.
+    - EVEN if a choco package is NOT in THIS SCRIPTS list. So be careful with this one.
+    - Allows you just to use this one script for weekly / monthly updates of all choco packages.
+
 
 ################# IMPORTANT SCRIPT INFORMATION ################# 
 
@@ -32,15 +55,17 @@ choco list
 Update the $packages hashtable in the powershell code below to add or remove the software's installed display name and the
 corresponding package in chocolatey.
 
-Like all things in the IT world, there is no guarantee all the already added packages listed are the current, correct and actually
-would want. Other situtions like if the Package name gets changed or updated to something different in the future would need to be reviewed regularly.
-The list was limited to the largest, most commonly know packages and software as of the beginning of 2025. I likely forgot some but feel free to research
-and add/adjust/remove packages as appropriate.
+Like all things in the IT world, there is no guarantee all the already added packages listed below are the current, correct and actually the exact package you
+would want. Other situtions will likely arise, like if a Package name gets changed or updated in the future. This list needs to be reviewed both
+INTIALLY and on a reasonable regular cadence. The list was limited to the largest, most commonly know packages and software as of the beginning of 2025.
+I likely forgot some but feel free to research and add/adjust/remove packages as appropriate.
 
-
+##############################################################################
 ################# Additional Considerations about Chocolatey ################# 
+#################    And How Update If Present Only Works    ################# 
+##############################################################################
 
-For many common installers (e.g., Zoom, Chrome) Chocolatey sometimes detect an existing installation and upgrade using the existing instance,
+For many common installers (e.g., Zoom, Chrome) Chocolatey sometimes can detect an existing installation and upgrade using the existing instance,
 without uninstalling and reinstalled but this isn't universal. Some Chocolatey packages might work differently, behavior can vary by software vendor. 
 It's best to check the choco package's documentation or test on a non-critical system if you're concerned of impacting Endusers.
 
@@ -48,7 +73,9 @@ https://community.chocolatey.org/packages
 
 Any software that has a matching Chocolatey package can be added to the choco update list (type in command prompt: "choco list" to
 see your machines current list) but the tricky part is matching up the reported Display Name of installed software with the official
-choco package name. If you are not careful you can easily make mistakes here. Its a simple command to add a new package to the choco list. Example:
+choco package name. If you are not careful you can easily make mistakes here. Its a simple command to add a new package to the choco
+managed list on an endpoint.
+Example:
 
 choco install googlechrome -y
 
@@ -66,7 +93,7 @@ if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
     Write-Error "Chocolatey is not installed on this machine. Exiting..."
     Rmm-Alert -Category 'Chocolatey missing' -Body "Chocolatey install is missing. Update only if Present script was ran but the choco command was not found. Please make sure Chocolatey is installed and try again."
     
-    Log-Activity -Message "FAILED Choco Update Only If Present. Choco not installed " -EventName "Choco Update"
+    Log-Activity -Message "FAILED - Choco not installed on script Choco Update Only If Present " -EventName "Choco Update"
     exit 1
 }
 
@@ -119,8 +146,9 @@ function Get-InstalledSoftware {
     }
 }
 
-$installedSoftware = Get-InstalledSoftware
+$installedSoftware = Get-InstalledSoftware #installed list of software on the machine
 
+# Get the list of choco packages on this endpoint and store in variable $chocoRawOutput
 try {
     # Get the raw output from choco list including any warnings
     $chocoRawOutput = choco list --no-color 2>&1
@@ -131,7 +159,6 @@ try {
 
 # Check if the raw output contains a pending reboot warning and display a warning message
 Write-Host "Ignore Version and Reboot check is set to $ignore_version_and_reboot_checks"
-# Check if the raw output contains a pending reboot warning and display a warning message
 if($ignore_version_and_reboot_checks -eq "False"){    
     if ($chocoRawOutput -match "reboot") {
         Write-Host "Warning: A pending system reboot has been detected. Script will not likely work. Exiting"
@@ -154,7 +181,7 @@ $version = [version](choco -v)
 Write-Host "Chocolately version is $version"
 if($ignore_version_and_reboot_checks -eq "False"){ 
     if ($version -ge [version]"2.3") {
-        Write-Host "Chocolately version is 2.3 or higher"
+        Write-Host "Chocolately version is 2.3 or higher. Continuing with the script"
     } else {
         Write-Host "Chocolately version: $version is lower than 2.3, unlikely to work exiting"
         Log-Activity -Message "Chocolately version: $version is lower than 2.3. Exiting Script" -EventName "Choco Update"
@@ -165,18 +192,17 @@ else{
     if ($version -ge [version]"2.3") {
         Write-Host "Chocolately version is 2.3 or higher"
     } else{ 
-    Write-Host "Chocolately version is lower than 2.3, but ignore was set to true, continuing"
+    Write-Host "Chocolately version is lower than 2.3, but ignore was set to true, continuing. Unknown if older choco version will work"
     Log-Activity -Message "Ignoring Chocolately version lower than 2.3 for Update if Present Customizable List. Unknown how well this script will work" -EventName "Choco Update"
     }
 }
 
 Write-Host "------------------------------------------------"
 # Filter out validation warnings and pending reboot messages for further processing
-$chocoOutput = $chocoRawOutput | Where-Object { 
-    $_ -notmatch "Validation Warnings:" -and 
-    $_ -notmatch "pending system reboot"
-}
+# $chocoRawOutput is the list of packages from the choco list command
+$chocoOutput = $chocoRawOutput | Where-Object { $_ -notmatch "Validation Warnings:" -and $_ -notmatch "pending system reboot" }
 
+# Parse the choco list output into a hashtable for easier comparison
 $chocoManaged = @{}
 foreach ($line in $chocoOutput) {
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
@@ -187,17 +213,21 @@ foreach ($line in $chocoOutput) {
     }
 }
 
-# Compare our list against Chocolatey managed packages and installed software
+# Compare This Script's list against Chocolatey managed packages and installed software
 $managedList = @()             # Packages from our list that are managed by Chocolatey
 $unmanagedSoftwareList = @()   # Packages from our list that are installed but NOT managed by Chocolatey
 
+# $packages is the variable that holds the hashtable of all the apps that are wanted to only update if present
+# The script will loop through the predefined list of package names and compare them to the chocoManaged list (variable that holds choco list output)
+# If the package is found in the chocoManaged list (meaning Choco installed and is managing the app on this endpoint), it will add it to the managedList variable
 foreach ($pkg in $packages) {
     $pkgNameLower = $pkg.PackageName.ToLower()
     if ($chocoManaged.ContainsKey($pkgNameLower)) {
         $managedList += $pkg
     }
     else {
-        # Check if the software is installed on the machine (via registry search)
+        # Else if there was not a match found in the choco list output, check to see if a desired app is installed on the machine. 
+        # If an app on the endpoint Display Name matches the name of a package in our list, add it to the unmanagedSoftwareList variable
         $foundSoftware = $installedSoftware | Where-Object { $_.DisplayName -match [regex]::Escape($pkg.DisplayName) }
         if ($foundSoftware) { 
             $unmanagedSoftwareList += $pkg 
@@ -205,48 +235,46 @@ foreach ($pkg in $packages) {
     }
 }
 
-
+# Output to console the list of found Chocolatey managed packages on this Endpoint
+# This list could included software added manually or another way to the choco list
 Write-Host " "
-# Output the full list of Chocolatey managed packages
 Write-Host "=== All Chocolatey Managed Packages (Total: $($chocoManaged.Keys.Count)) ==="
 Write-Host "------------------------------------------------"
 
 foreach ($pkgName in $chocoManaged.Keys) {
-    Write-Host "- $pkgName (Version: $($chocoManaged[$pkgName]))"
-    
+    Write-Host "- $pkgName (Version: $($chocoManaged[$pkgName]))"    
 }
 
+# This will output to console, the already added choco managed packages that match this Script's predefined list
 Write-Host " "
 Write-Host "Chocolatey Managed Packages (from our list) (Count: $($managedList.Count)) ==="
 Write-Host "------------------------------------------------"
 foreach ($pkg in $managedList) {
     Write-Host "- $($pkg.DisplayName) (Package: $($pkg.PackageName))"
 }
+
+# This will output to console, the installed software that is not managed by Chocolatey but could be added
 Write-Host " "
 Write-Host "`n=== Installed Software (Not Managed by Chocolatey) that could be added (Count: $($unmanagedSoftwareList.Count))"
 Write-Host "------------------------------------------------"
 foreach ($pkg in $unmanagedSoftwareList) {
     Write-Host "- $($pkg.DisplayName) (Package: $($pkg.PackageName))"
 }
+
+# Log the findings to Syncro Activity Asset Log
+$total_count_of_packages_managed_by_Chocolatey = $chocoManaged.Keys.Count
+$total_count_of_already_added_packages = $managedList.Count
+$total_count_of_unmanaged_packages = $unmanagedSoftwareList.Count
+
 Write-Host " "
-Log-Activity -Message "Choco list shows $($chocoManaged.Keys.Count) packages managed by Chocolatey" -EventName "Choco Update"
-Log-Activity -Message "$($managedList.Count) apps packages already added from Update If Present list" -EventName "Choco Update"
-Log-Activity -Message "$($unmanagedSoftwareList.Count) installed Apps that could be added to Chocolatey from Update If Present list" -EventName "Choco Update"
+Log-Activity -Message "$total_count_of_unmanaged_packages apps available for Choco Update if Present || $total_count_of_already_added_packages apps currently managed || $total_count_of_packages_managed_by_Chocolatey total apps managed by Choco " -EventName "Choco Update"
 
+# Build variables to hold details about the findings for the RMM Alert
 $unmanagedListOutput = $unmanagedSoftwareList | ForEach-Object { "- $($_.DisplayName) (Package: $($_.PackageName))" }
-# Build string outputs for each section
-
-# List all Chocolatey managed packages (complete list)
-$allChocoPackages = $chocoManaged.Keys | ForEach-Object { "- $_ (Version: $($chocoManaged[$_]))" }
-
-# List the packages from our list that are already managed by Chocolatey
-$managedListOutput = $managedList | ForEach-Object { "- $($_.DisplayName) (Package: $($_.PackageName))" }
-
-# List the installed (but unmanaged) software from our list that could be added
-$unmanagedListOutput = $unmanagedSoftwareList | ForEach-Object { "- $($_.DisplayName) (Package: $($_.PackageName))" }
-
-# Calculate the total matching packages from our list (both managed and unmanaged)
-$totalMatching = $managedList.Count + $unmanagedSoftwareList.Count
+$allChocoPackages = $chocoManaged.Keys | ForEach-Object { "- $_ (Version: $($chocoManaged[$_]))" } # List all Chocolatey managed packages (complete list)
+$managedListOutput = $managedList | ForEach-Object { "- $($_.DisplayName) (Package: $($_.PackageName))" } # List the packages from our list that are already managed by Chocolatey
+$unmanagedListOutput = $unmanagedSoftwareList | ForEach-Object { "- $($_.DisplayName) (Package: $($_.PackageName))" } # List the installed (but unmanaged) software from our list that could be added
+$totalMatching = $managedList.Count + $unmanagedSoftwareList.Count # Calculate the total matching packages from our list (both managed and unmanaged)
 
 # Build the alert body including all sections and package names
 $body = @"
@@ -260,14 +288,51 @@ $($unmanagedSoftwareList.Count) not actively managed packages by Chocolatey that
 if ($unmanagedListOutput -gt 1 -and $alert_if_unmanaged_packages_found -eq "True") {
     Rmm-Alert -Category 'Unmanaged Choco Package' -Body $body
 } else {
-    Write-Host "Unmanaged package count is: $unmanagedListOutput"
+    Write-Host "Option for Alert set to FALSE.Unmanaged package count is: $unmanagedListOutput"
 }
 
 if ($force_add_unmanaged_packages -eq "True") {
     Log-Activity -Message "Force Adding Packages to Choco List Count: $($unmanagedSoftwareList.Count) " -EventName "Choco Update"
     foreach ($pkg in $unmanagedSoftwareList) {
         Write-Host "Installing unmanaged package: $($pkg.DisplayName) (Package: $($pkg.PackageName))..."
-        choco install $($pkg.PackageName) -y
-        
+        choco install $($pkg.PackageName) -y        
+    }
+}
+
+
+$update_all_packages = "FALSE"
+
+if ($update_all_packages -eq "True") {
+    Log-Activity -Message "Updating all Chocolatey Packages on this endpoint" -EventName "Choco Update"
+    Write-Host "Updating all Chocolatey Packages on this endpoint..."
+
+    try {
+        $error.Clear()
+        $chocoResult = choco upgrade all -y 2>&1
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Chocolatey upgrade failed with exit code $LASTEXITCODE"
+        }
+
+        Log-Activity -Message "Chocolatey packages updated successfully" -EventName "Choco Update Success"
+        Write-Host "Chocolatey packages updated successfully."
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        Log-Activity -Message "Chocolatey upgrade failed: $errorMessage" -EventName "Choco Update Failure"
+        Write-Host "Error: Chocolatey upgrade failed. See logs for details."
+
+        # Optionally retry the upgrade
+        Start-Sleep -Seconds 60
+        Write-Host "Retrying Chocolatey Packages upgrade... after 60 seconds"
+        $retryResult = choco upgrade all -y 2>&1
+
+        if ($LASTEXITCODE -ne 0) {
+            Log-Activity -Message "Chocolatey retry failed with exit code $LASTEXITCODE" -EventName "Choco Update Retry Failure"
+            Write-Host "Retry failed. Manual intervention required."
+        } else {
+            Log-Activity -Message "Chocolatey retry succeeded" -EventName "Choco Update Retry Success"
+            Write-Host "Chocolatey retry successful."
+        }
     }
 }
