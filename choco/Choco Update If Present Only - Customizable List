@@ -1,9 +1,3 @@
-$alert_if_unmanaged_packages_found = "FALSE" 
-$alert_if_unmanaged_packages_found = "FALSE" 
-$force_add_unmanaged_packages = "FALSE"
-$update_all_packages = "FALSE"
-
-
 <#
 
 script variables:
@@ -298,9 +292,6 @@ if ($force_add_unmanaged_packages -eq "True") {
         choco install $($pkg.PackageName) -y        
     }
 }
-
-
-$update_all_packages = "FALSE"
 
 if ($update_all_packages -eq "True") {
     Log-Activity -Message "Updating all Chocolatey Packages on this endpoint" -EventName "Choco Update"
