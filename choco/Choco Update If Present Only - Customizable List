@@ -146,6 +146,8 @@ $installedSoftware = Get-InstalledSoftware #installed list of software on the ma
 try {
     # Get the raw output from choco list including any warnings
     $chocoRawOutput = choco list --no-color 2>&1
+    Write-Output $chocoRawOutput
+    Write-Output "------------------------------------------------"
 } catch {
     Write-Error "Error retrieving Chocolatey packages: $_"
     exit 1
